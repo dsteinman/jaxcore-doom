@@ -36,6 +36,7 @@
 
 #include "sounds.h"
 #include "doomtype.h"
+#include <stdint.h>
 
 #define SNDSERV
 #undef SNDINTR
