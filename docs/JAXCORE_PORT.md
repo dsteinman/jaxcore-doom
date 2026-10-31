@@ -1,9 +1,10 @@
 # Jaxcore Doom firmware foundation
 
 Target: Jaxcore Control S31 with 16 MB flash/PSRAM, SD-NAND over SDMMC,
-240x284 ST7789 TFT, and NAU8325 stereo output. The module/carrier hardware is
-not fabricated. This change establishes portable firmware interfaces and tests;
-it does not claim a linked or bootable S31 firmware image.
+284x240 landscape ST7789 TFT, and NAU8325 stereo output. The module/carrier
+hardware is not fabricated. A complete S31 image now builds and links with
+headless display, software audio and disabled inputs. Boot, gameplay and
+peripheral operation remain untested. See [S31_BUILD.md](S31_BUILD.md).
 
 ## Implemented
 
@@ -19,8 +20,8 @@ file access. The same source runs on a desktop filesystem or ESP-IDF VFS.
   unexpected EOF through `I_Error` instead of returning uninitialized data.
 - Read-only regular files are supported, with seek and individual file size
   bounded by the engine's existing signed `int` API (`INT_MAX` bytes).
-- Enable `CONFIG_DOOM_WAD_FILESYSTEM` to select this backend and bypass the old
-  flash-partition checks. The upstream partition backend remains the default.
+- `CONFIG_DOOM_WAD_FILESYSTEM` selects this backend. It is the S31 default;
+  the old partition backend remains available for legacy configurations.
 - The application must mount storage before `doom_main`. This patch does not
   mount, format, provision, or upload files to SD-NAND. Place both the chosen
   IWAD and the required `prboom.wad` in the configured directory once that exists.
@@ -76,10 +77,28 @@ transport averages the L/R pair for the original mono hardware. Partial writes
 are completed before the output buffer is reused. The 560-frame chunk is a
 buffer size, not an IMF tick or millisecond duration.
 
-This patch retains the upstream I2S pins, sample rate (22050 Hz), WS inversion,
-task affinity, and unused MCLK. It does not initialize NAU8325. These settings
-must be replaced by the reviewed board/codec configuration before use on Jaxcore.
-The desired final output rate is not yet chosen.
+The legacy `sndhw.c` still contains the upstream I2S pins, 22050 Hz sample rate,
+WS inversion, task affinity and unused MCLK. It does not initialize NAU8325.
+S31 builds select `sndhw_null.c` instead, which clocks the stereo callback into
+a software sink without audio GPIOs. The final hardware rate and codec settings
+remain pending. The sink's tick-rounded pacing is for bring-up, not a precise
+sample clock or performance measurement.
+
+### S31 platform build
+
+The standalone build uses ESP-IDF commit
+`9a97f6c54ec638111ce55cd36581b3c192f15207` and Espressif GCC 15.2.0.
+Xtensa and the unused ES8311 dependency have been removed. C11 compatibility,
+explicit platform/engine dependencies and VFS support resolve the full link.
+Legacy warnings are visible and nonfatal in the old engine/platform components;
+the original project-wide warning suppression is removed.
+
+S31 defaults use a 320x200 indexed framebuffer allocated explicitly in PSRAM,
+monotonic microsecond timing, and internal task stacks. Startup reports memory
+and checks PSRAM/heap state, then refuses to launch Doom if its required WADs
+are unavailable. The storage mount is still pending, so this is the expected
+startup path until the next milestone. Those startup paths are compile-checked,
+not verified on a device.
 
 ### OPL portability fixes
 
@@ -120,18 +139,17 @@ python3 scripts/check_s31_objects.py \
   --sdk /path/to/esp32s31-libs/version
 ```
 
-This compiles the changed engine/backend sources and both I2S modes to RISC-V
-objects, using GNU C11 for legacy engine compatibility. It does **not** configure
-or link the complete ESP-IDF project, exercise partition storage, verify task
-timing, or run hardware. The initial local check used Arduino core 4.0.0-RC1's
+This older check compiles selected sources and both I2S modes to RISC-V objects,
+using GNU C11. It is supplementary to the complete build now documented in
+[S31_BUILD.md](S31_BUILD.md), and does not exercise storage, timing or hardware.
+The initial local object check used Arduino core 4.0.0-RC1's
 S31 SDK, IDF `v6.1-803-g94639ab7251`, and Espressif RISC-V tools `2512`.
 
 ## Next changes
 
-1. Set up and pin a standalone S31-capable ESP-IDF checkout. Migrate CMake,
-   the Xtensa dependency, ROM/SOC includes and SDK configuration. Enforce the
-   engine's C11 compatibility and build/link the whole application for S31.
-2. Add a board component and diagnostics entry point. Keep unresolved pins
+1. Complete: pinned standalone SDK, S31 CMake/configuration migration and full
+   firmware link. Keep this build passing as peripheral support is added.
+2. Extend the startup diagnostics into a board component. Keep unresolved pins
    explicitly unassigned; do not inherit S3 button/display pins into S31 defaults.
 3. Mount SD-NAND over SDMMC, with an explicit provisioning/upload path and
    recoverable errors. Keep storage formatting a separate deliberate operation.

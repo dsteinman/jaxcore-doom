@@ -1,144 +1,81 @@
 // Copyright 2016-2017 Espressif Systems (Shanghai) PTE LTD
-//
-// Licensed under the Apache License, Version 2.0
-
-#include "esp_attr.h"
-
-#include "rom/cache.h"
-#include "rom/ets_sys.h"
-#include "rom/spi_flash.h"
-#include "rom/crc.h"
-
-#include "soc/soc.h"
-#include "soc/dport_reg.h"
-#include "soc/io_mux_reg.h"
-#include "soc/efuse_reg.h"
-#include "soc/rtc_cntl_reg.h"
-
+// SPDX-License-Identifier: Apache-2.0
+#include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
+#include "esp_chip_info.h"
 #include "esp_err.h"
-#include "esp_system.h"
-#include "esp_partition.h"
-#include "spi_flash_mmap.h"
+#include "esp_flash.h"
 #include "esp_heap_caps.h"
-#include "nvs_flash.h"
-
-#undef false
-#undef true
-#include "i_system.h"
-
+#include "esp_log.h"
+#include "esp_psram.h"
+#include "esp_system.h"
+#include "gamepad.h"
 #include "spi_lcd.h"
-#include "sdkconfig.h"
+#include "wad_file.h"
+#if CONFIG_DOOM_LEGACY_INPUT && CONFIG_HW_JOYSTICK_OPTION == 2
 #include "bt_manager.h"
-
-extern void jsInit();
-
-#define JOYSTICK_OPTION CONFIG_HW_JOYSTICK_OPTION
-
-/* ---- Static stack in PSRAM to avoid internal RAM fragmentation ---- */
-EXT_RAM_ATTR static StackType_t doomStack[32768];
-static StaticTask_t doomTaskBuffer;
-
-void doomEngineTask(void *pvParameters)
-{
-    printf("doomEngineTask started\n");
-    printf("Free heap: %u bytes\n", esp_get_free_heap_size());
-    printf("Free internal heap: %u bytes\n",
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-    char const *argv[] = {
-        "doom",
-        "-cout", "ICWEFDA",
-        // "nosound",
-        // "nomusic",
-        // "nosfx",
-        NULL
-    };
-
-    doom_main(3, argv); //este valor se cambia si se cambian los parametros de argv
-}
-
-void app_main()
-{
-    printf("Reset reason: %d\n", esp_reset_reason());
-
-    /* NVS must be initialized BEFORE starting BLE */
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ESP_ERROR_CHECK(nvs_flash_init());
-    }
-
-    /* Bluetooth init controlled by Kconfig option */
-    if (JOYSTICK_OPTION == 2)
-    {
-        printf("Bt is enabled. Init\n");
-        bt_init();
-    }
-    else
-    {
-        printf("Bt is disabled.\n");
-    }
-
-    /* Filesystem mode requires the board layer to mount storage before here. */
-#if !CONFIG_DOOM_WAD_FILESYSTEM
-    /* Partition checks */
-    const esp_partition_t *part;
-
-    part = esp_partition_find_first(66, 6, NULL);
-    if (part == 0)
-        printf("Couldn't find wad part!\n");
-
-    part = esp_partition_find_first(66, 7, NULL);
-    if (part == 0)
-        printf("Couldn't find prboom wad part!\n");
+#include "nvs_flash.h"
 #endif
 
-    printf("app_main: before spi_lcd_init()\n");
-    spi_lcd_init();
-    printf("app_main: after spi_lcd_init()\n");
+static const char *TAG = "jaxcore";
+extern int doom_main(int argc, const char *const *argv);
 
-    printf("app_main: before jsInit()\n");
-    jsInit();
-    printf("app_main: after jsInit()\n");
-
-    printf("app_main: before xTaskCreate()\n");
-
-    printf("Heap before Doom task: %u bytes\n",
-           esp_get_free_heap_size());
-    printf("Internal heap before Doom task: %u bytes\n",
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-    TaskHandle_t doomHandle =
-        xTaskCreateStaticPinnedToCore(
-            doomEngineTask,
-            "doomEngine",
-            32768,
-            NULL,
-            5,
-            doomStack,
-            &doomTaskBuffer,
-            1);
-
-    if (doomHandle == NULL)
-    {
-        printf("ERROR: Doom static task creation failed!\n");
-    }
-    else
-    {
-        printf("Doom static task created successfully\n");
-    }
-
-    printf("app_main: after xTaskCreate()\n");
-
+static void doom_engine_task(void *unused)
+{
+    (void)unused;
+    const char *argv[] = { "doom", "-cout", "ICWEFDA", NULL };
+    doom_main(3, argv);
     vTaskDelete(NULL);
+}
+
+void app_main(void)
+{
+    esp_chip_info_t chip;
+    uint32_t flash_bytes = 0;
+    esp_chip_info(&chip);
+    ESP_ERROR_CHECK(esp_flash_get_size(NULL, &flash_bytes));
+    ESP_LOGI(TAG, "target=%s cores=%d revision=%d reset=%d",
+             CONFIG_IDF_TARGET, chip.cores, chip.revision, esp_reset_reason());
+    ESP_LOGI(TAG, "flash=%lu bytes PSRAM=%u bytes", (unsigned long)flash_bytes,
+             (unsigned)esp_psram_get_size());
+    ESP_LOGI(TAG, "free internal=%u PSRAM=%u bytes",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    if (!esp_psram_is_initialized()) {
+        ESP_LOGE(TAG, "PSRAM is unavailable; Doom startup stopped");
+        return;
+    }
+    if (!heap_caps_check_integrity_all(true)) {
+        ESP_LOGE(TAG, "Heap integrity check failed; Doom startup stopped");
+        return;
+    }
+#if CONFIG_IDF_TARGET_ESP32S31
+    ESP_LOGI(TAG, "S31 build bring-up: 320x200 renderer, planned 284x240 ST7789");
+    ESP_LOGI(TAG, "display/input disabled; stereo audio uses a software sink");
+#endif
+#if CONFIG_DOOM_LEGACY_INPUT && CONFIG_HW_JOYSTICK_OPTION == 2
+    ESP_ERROR_CHECK(nvs_flash_init());
+    bt_init();
+#endif
+    /* Storage mounting is a following milestone. No formatting is attempted.
+     * The preflight keeps a board without WADs out of the engine error path. */
+    const char *required[] = { "DOOM1.WAD", "prboom.wad" };
+    for (unsigned i = 0; i < sizeof(required) / sizeof(required[0]); ++i) {
+        int fd = I_Open(required[i], O_RDONLY);
+        if (fd < 0) {
+            ESP_LOGW(TAG, "WAD unavailable: %s; engine not started", required[i]);
+            ESP_LOGW(TAG, "Filesystem mount/upload support is still pending");
+            return;
+        }
+        I_Close(fd);
+    }
+    spi_lcd_init();
+    jsInit();
+    /* Keep stacks internal until PSRAM/cache-off task behavior is validated.
+     * ESP-IDF stack sizes are bytes. No static stack in external BSS. */
+    ESP_ERROR_CHECK(xTaskCreate(doom_engine_task, "doom", 32768, NULL, 5,
+                               NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }

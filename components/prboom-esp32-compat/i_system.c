@@ -74,7 +74,10 @@
 #include "sdkconfig.h"
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
+#include "esp_timer.h"
+#if !CONFIG_DOOM_WAD_FILESYSTEM
+#include "spi_flash_mmap.h"
+#endif
 
 #ifdef __GNUG__
 #pragma implementation "i_system.h"
@@ -88,33 +91,19 @@ int realtime=0;
 
 void I_uSleep(unsigned long usecs)
 {
-	vTaskDelay(usecs/1000);
+    if (!usecs) { taskYIELD(); return; }
+    TickType_t ticks = pdMS_TO_TICKS(((uint64_t)usecs + 999) / 1000);
+    vTaskDelay(ticks ? ticks : 1);
 }
 
-static unsigned long getMsTicks() {
-  struct timeval tv;
-  struct timezone tz;
-  unsigned long thistimereply;
-
-  gettimeofday(&tv, &tz);
-
-  //convert to ms
-  unsigned long now = tv.tv_usec/1000+tv.tv_sec*1000;
-  return now;
-}
-
-int I_GetTime_RealTime (void)
+static unsigned long getMsTicks(void)
 {
-  struct timeval tv;
-  struct timezone tz;
-  unsigned long thistimereply;
+    return (unsigned long)(esp_timer_get_time() / 1000);
+}
 
-  gettimeofday(&tv, &tz);
-
-  thistimereply = (tv.tv_sec * TICRATE + (tv.tv_usec * TICRATE) / 1000000);
-
-  return thistimereply;
-
+int I_GetTime_RealTime(void)
+{
+    return (int)(esp_timer_get_time() * TICRATE / 1000000);
 }
 
 const int displaytime=0;

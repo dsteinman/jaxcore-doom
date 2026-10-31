@@ -1,36 +1,28 @@
-cmake_minimum_required(VERSION 3.5)
-
-set(WAD_BACKEND_SOURCE "")
+set(platform_sources i_main.c i_network.c i_system.c i_video.c)
+set(platform_dependencies heap esp_timer esp_partition spi_flash esp_psram vfs)
 if(CONFIG_DOOM_WAD_FILESYSTEM)
-  set(WAD_BACKEND_SOURCE "wad_file.c")
+  list(APPEND platform_sources wad_file.c)
 endif()
-
-idf_component_register(
-SRCS
-  ${WAD_BACKEND_SOURCE}
-  "gamepad.c"
-  "i_main.c"
-  "i_network.c"
-  "i_system.c"
-  "i_video.c"
-  "psxcontroller.c"
-  "spi_lcd.c"
-  "tsinput.c"
-  "sndhw.c"
-
-INCLUDE_DIRS
-  "include" "."
-
-PRIV_REQUIRES
-  prboom
-  heap
-  spi_flash
-  xtensa
-  spi_flash
-  esp_partition
-  driver
-  es8311
-)
-
-#Need this otherwise linking fails because of some sort of link optimization for sndhw...
-target_link_libraries(${COMPONENT_LIB} INTERFACE "-u sndhw_init")
+if(CONFIG_DOOM_DISPLAY_SPI)
+  list(APPEND platform_sources spi_lcd.c)
+  list(APPEND platform_dependencies esp_driver_spi esp_driver_gpio)
+else()
+  list(APPEND platform_sources display_null.c)
+endif()
+if(CONFIG_DOOM_AUDIO_I2S)
+  list(APPEND platform_sources sndhw.c)
+  list(APPEND platform_dependencies esp_driver_i2s)
+else()
+  list(APPEND platform_sources sndhw_null.c)
+endif()
+if(CONFIG_DOOM_LEGACY_INPUT)
+  list(APPEND platform_sources gamepad.c)
+  list(APPEND platform_dependencies esp_driver_gpio)
+else()
+  list(APPEND platform_sources gamepad_null.c)
+endif()
+idf_component_register(SRCS ${platform_sources} INCLUDE_DIRS "include" "."
+                       REQUIRES prboom
+                       PRIV_REQUIRES ${platform_dependencies})
+target_compile_definitions(${COMPONENT_LIB} PRIVATE HAVE_CONFIG_H)
+target_compile_options(${COMPONENT_LIB} PRIVATE -std=gnu11 -Wno-error)

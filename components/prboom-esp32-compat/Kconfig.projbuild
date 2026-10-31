@@ -1,7 +1,30 @@
 menu "ESP32-Doom platform-specific configuration"
 
+config DOOM_DISPLAY_SPI
+	bool "Enable legacy SPI display transport"
+	depends on !IDF_TARGET_ESP32S31
+	default y
+	help
+		S31 uses a headless backend until the ST7789 driver is implemented.
+
+config DOOM_AUDIO_I2S
+	bool "Enable legacy I2S amplifier transport"
+	depends on !IDF_TARGET_ESP32S31
+	default y
+	help
+		S31 uses a paced software sink until the NAU8325 driver is implemented.
+
+config DOOM_LEGACY_INPUT
+	bool "Enable upstream GPIO/BLE input mapping"
+	depends on !IDF_TARGET_ESP32S31
+	default y
+	help
+		The upstream mapping conflicts with Jaxcore pins. S31 inputs remain
+		disabled until the board-specific backend is implemented.
+
 config DOOM_WAD_FILESYSTEM
 	bool "Read WADs from a mounted filesystem"
+	default y if IDF_TARGET_ESP32S31
 	default n
 	help
 		Use read-only POSIX/VFS file access instead of raw flash partitions.
@@ -15,6 +38,7 @@ config DOOM_WAD_ROOT
 
 config DOOM_AUDIO_STEREO
 	bool "Transmit independent left/right PCM over I2S"
+	default y if IDF_TARGET_ESP32S31
 	default n
 	help
 		The mixer always produces stereo. With this option disabled, transport

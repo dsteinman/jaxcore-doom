@@ -107,12 +107,16 @@ typedef enum {
 // when multiple screen sizes are supported
 
 // proff 08/17/98: Changed for high-res
-#define MAX_SCREENWIDTH  240
-#define MAX_SCREENHEIGHT 240
+#ifndef DOOM_RENDER_WIDTH
+#define DOOM_RENDER_WIDTH 240
+#define DOOM_RENDER_HEIGHT 240
+#endif
+#define MAX_SCREENWIDTH  DOOM_RENDER_WIDTH
+#define MAX_SCREENHEIGHT DOOM_RENDER_HEIGHT
 
 // SCREENWIDTH and SCREENHEIGHT define the visible size
-#define SCREENWIDTH 240
-#define SCREENHEIGHT 240
+#define SCREENWIDTH DOOM_RENDER_WIDTH
+#define SCREENHEIGHT DOOM_RENDER_HEIGHT
 // SCREENPITCH is the size of one line in the buffer and
 // can be bigger than the SCREENWIDTH depending on the size
 // of one pixel (8, 16 or 32 bit) and the padding at the

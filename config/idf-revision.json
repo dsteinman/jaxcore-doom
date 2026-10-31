@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/espressif/esp-idf.git",
+  "revision": "9a97f6c54ec638111ce55cd36581b3c192f15207",
+  "support_branch": "release/v6.1",
+  "target": "esp32s31",
+  "compiler": "esp-15.2.0_20251204",
+  "ninja": "1.13.2"
+}

@@ -52,7 +52,7 @@
 #include "st_stuff.h"
 #include "lprintf.h"
 
-#include "rom/ets_sys.h"
+#include "esp_rom_sys.h"
 #include "spi_lcd.h"
 
 #include "esp_heap_caps.h"
@@ -122,12 +122,12 @@ void I_FinishUpdate (void)
 #if 0
 	int x, y;
 	char *chrs=" '.~+mM@";
-	ets_printf("\033[1;1H");
+	esp_rom_printf("\033[1;1H");
 	for (y=0; y<240; y+=4) {
 		for (x=0; x<320; x+=2) {
-			ets_printf("%c", chrs[(scr[x+y*320])>>13]);
+			esp_rom_printf("%c", chrs[(scr[x+y*320])>>13]);
 		}
-		ets_printf("\n");
+		esp_rom_printf("\n");
 	}
 #endif
 #if 1
@@ -145,7 +145,7 @@ void I_SetPalette (int pal)
 	int pplump = W_GetNumForName("PLAYPAL");
 	const byte * palette = W_CacheLumpNum(pplump);
 	palette+=pal*(3*256);
-	for (i=0; i<255 ; i++) {
+	for (i=0; i<256 ; i++) {
 		v=((palette[0]>>3)<<11)+((palette[1]>>2)<<5)+(palette[2]>>3);
 		lcdpal[i]=(v>>8)+(v<<8);
 //		lcdpal[i]=v;
@@ -164,7 +164,7 @@ void I_PreInitGraphics(void)
 {
 	lprintf(LO_INFO, "preinitgfx");
 #ifdef INTERNAL_MEM_FB
-	screenbuf=heap_caps_malloc(320*240, /*MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT*/MALLOC_CAP_SPIRAM);
+	screenbuf=heap_caps_malloc(SCREENPITCH * SCREENHEIGHT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 	assert(screenbuf);
 #endif
 }

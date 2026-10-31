@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.5)
-
-list(APPEND EXTRA_COMPONENT_DIRS "components/prboom" "components/prboom-esp32-compat" "components/prboom-wad-tables")
+cmake_minimum_required(VERSION 3.22)
+set(IDF_TARGET "esp32s31" CACHE STRING "Espressif chip target")
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(esp-doom)
-
-idf_build_set_property(COMPILE_OPTIONS "-w" APPEND) # Suppress all warnings (which are often reported as errors)
+idf_build_set_property(MINIMAL_BUILD ON)
+project(jaxcore-doom)

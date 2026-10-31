@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.5)
-
 idf_component_register(
 SRCS
   "am_map.c"
@@ -83,4 +81,13 @@ INCLUDE_DIRS
 PRIV_REQUIRES
   prboom-wad-tables
   prboom-imfs
+  prboom-esp32-compat
 )
+
+target_compile_definitions(${COMPONENT_LIB} PRIVATE HAVE_CONFIG_H)
+if(IDF_TARGET STREQUAL "esp32s31")
+  target_compile_definitions(${COMPONENT_LIB} PUBLIC
+                            DOOM_RENDER_WIDTH=320 DOOM_RENDER_HEIGHT=200)
+endif()
+# PrBoom predates C23, where true/false became language keywords.
+target_compile_options(${COMPONENT_LIB} PRIVATE -std=gnu11 -Wno-error)

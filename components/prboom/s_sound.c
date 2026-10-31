@@ -357,7 +357,7 @@ void S_ResumeSound(void)
 
   if (mus_playing && mus_paused)
     {
-      I_ResumeSong(mus_playing->handle);
+      I_ResumeSong();
       mus_paused = false;
     }
 }

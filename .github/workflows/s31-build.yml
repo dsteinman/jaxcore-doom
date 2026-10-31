@@ -1,0 +1,28 @@
+name: S31 firmware build (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      JAXCORE_TOOLS_ROOT: ${{ runner.temp }}/jaxcore-toolchains
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python scripts/setup_idf.py --tools-root "$JAXCORE_TOOLS_ROOT"
+      - run: scripts/idf.sh build
+      - run: python scripts/check_s31_elf.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jaxcore-s31-bringup-firmware
+          path: |
+            build/s31/jaxcore-doom.bin
+            build/s31/jaxcore-doom.elf
+            build/s31/bootloader/bootloader.bin
+            build/s31/partition_table/partition-table.bin
+            build/s31/verification.json
