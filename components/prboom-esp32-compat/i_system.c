@@ -71,6 +71,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 #include "esp_partition.h"
 #include "esp_spi_flash.h"
@@ -166,6 +167,7 @@ const char* I_SigString(char* buf, size_t sz, int signum)
   return buf;
 }
 
+#if !CONFIG_DOOM_WAD_FILESYSTEM
 extern unsigned char *doom1waddata;
 
 typedef struct {
@@ -327,6 +329,7 @@ void I_Read(int ifd, void* vbuf, size_t sz)
 		sz
 	);
 }
+#endif /* !CONFIG_DOOM_WAD_FILESYSTEM: filesystem functions are in wad_file.c */
 
 const char *I_DoomExeDir(void)
 {

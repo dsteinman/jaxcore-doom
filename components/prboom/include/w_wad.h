@@ -126,7 +126,8 @@ int     (W_CheckNumForName)(const char* name, int);   // killough 4/17/98
 int     W_GetNumForName (const char* name);
 int     W_LumpLength (int lump);
 void    W_ReadLump (int lump, void *dest);
-// CPhipps - modified for 'new' lump locking
+// Each Cache or Lock call pins heap-backed data until one matching Unlock.
+// WAD cache access is serialized on the game task.
 const void* W_CacheLumpNum (int lump);
 const void* W_LockLumpNum(int lump);
 void    W_UnlockLumpNum(int lump);

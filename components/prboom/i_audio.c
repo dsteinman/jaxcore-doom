@@ -62,8 +62,9 @@
 #include "sndhw.h"
 
 #include "dbopl.h"
+#include "pcm_mixer.h"
 
-extern int sound_inited;
+static int sound_inited;
 
 //PSG: no music no FXsound = 0
 int snd_card=1;
@@ -71,21 +72,11 @@ int mus_card=1;
 #define RATE (22050)
 int snd_samplerate=RATE;
 
-typedef int32_t fixed_pt_t; //24.8 fixed point format
-#define TO_FIXED(x) ((x)<<8)
-#define FROM_FIXED(x) ((x)>>8)
-
-typedef struct {
-	uint8_t *samp; //NULL if slot is disabled
-	int vol;
-	fixed_pt_t rate_inc; //every output sample, pos is increased by this
-	fixed_pt_t len;
-	fixed_pt_t pos;
-} snd_slot_t;
-
-#define NO_SLOT 4
-
-snd_slot_t slot[NO_SLOT];
+static doom_pcm_mixer mixer;
+/* Only the game task touches the WAD cache. Finished voices retain their pin
+ * until the game task polls, stops, or replaces them; the callback never frees. */
+static int sample_lumps[DOOM_MIXER_VOICES];
+static int32_t opl_block[SND_CHUNK_FRAMES];
 
 typedef struct {
 	uint8_t reg;
@@ -121,87 +112,110 @@ static void imf_player_tick(int samps) {
 }
 
 
-static void snd_cb(int16_t *buf, int len) {
-	static int32_t *oplblk=NULL;
-	if (!oplblk) {
-		oplblk=calloc(len, sizeof(int32_t));
-		assert(oplblk);
-	}
-	imf_player_tick(len);
-	Chip__GenerateBlock2(&imfplayer.opl, len, oplblk);
-	for (int p=0; p<len; p++) {
-        int samp = oplblk[p] * 2;// antes: * 4; 
-		for (int i=0; i<NO_SLOT; i++) {
-			if (slot[i].samp) {
-				//mix in sound fx slot
-                samp += (slot[i].samp[FROM_FIXED(slot[i].pos)]) * 96;//128;
-				//increase, unload if end
-				slot[i].pos+=slot[i].rate_inc;
-				if (slot[i].pos > slot[i].len) {
-//					printf("Slot %d done\n", i);
-					slot[i].samp=NULL;
-				}
-			}
-		}
-#if 0
-		samp=samp/NO_SLOT;
-#else
-        if (samp < -32768) samp = -32768;
-        if (samp > 32767)  samp = 32767;
-#endif
-		buf[p]=samp;
-	}
+static void snd_cb(int16_t *buf, int frames)
+{
+    assert(frames >= 0 && frames <= SND_CHUNK_FRAMES);
+    imf_player_tick(frames);
+    Chip__GenerateBlock2(&imfplayer.opl, frames, opl_block);
+    doom_pcm_render(&mixer, buf, (size_t)frames, opl_block);
 }
 
-typedef struct {
-	uint16_t format_no;
-	uint16_t samp_rate;
-	uint32_t samp_ct;
-	uint8_t pad[16];
-	uint8_t samples[0];
-} dmx_samp_t;
-
-static void namebuf_upper(char *namebuf) {
-	for (int i=0; i<8; i++) {
-		if (namebuf[i]>='a' && namebuf[i]<='z') {
-			namebuf[i]-=32;
-		}
-	}
+static int valid_channel(int channel)
+{
+    return channel >= 0 && channel < DOOM_MIXER_VOICES;
 }
 
-int lumpnum_for_sndid(int id) {
-	char namebuf[9];
-	sprintf(namebuf, "ds%s", S_sfx[id].name);
-	namebuf_upper(namebuf);
-	int r=W_GetNumForName(namebuf);
-//	printf("lumpnum_for_sndid: id %d is %s -> lump %d\n", id, namebuf, r);
-	return r;
+/* Caller owns audio mutex; called only on game task. */
+static void release_channel(int channel)
+{
+    doom_pcm_stop(&mixer, channel);
+    if (sample_lumps[channel] >= 0) {
+        W_UnlockLumpNum(sample_lumps[channel]);
+        sample_lumps[channel] = -1;
+    }
 }
 
+int I_GetSfxLumpNum(sfxinfo_t *sfx)
+{
+    char name[9];
+    snprintf(name, sizeof(name), "ds%.6s", sfx->name);
+    return W_CheckNumForName(name);
+}
 
-int I_StartSound(int id, int channel, int vol, int sep, int pitch, int prio) {
-	if ((channel < 0) || (channel >= NO_SLOT))
-		return -1;
+int I_StartSound(int id, int channel, int vol, int sep, int pitch, int prio)
+{
+    doom_pcm_sample sample;
+    int lump, length;
+    const void *data;
+    (void)prio;
+    if (!sound_inited || !valid_channel(channel) || id <= 0 || id >= NUMSFX)
+        return -1;
+    lump = I_GetSfxLumpNum(&S_sfx[id]);
+    if (lump < 0 || (length = W_LumpLength(lump)) < 0) return -1;
 
-	dmx_samp_t *snd=(dmx_samp_t*)W_CacheLumpNum(lumpnum_for_sndid(id));
-	if (snd->format_no!=3) {
-		printf("I_StartSound: unknown format %d\n", snd->format_no);
-		return -1;
-	}
-	sndhw_lock();
-	slot[channel].samp=NULL;
-	slot[channel].vol=vol;
-	slot[channel].rate_inc=TO_FIXED(snd->samp_rate)/RATE;
-	slot[channel].len=TO_FIXED(snd->samp_ct);
-	slot[channel].pos=0;
-	slot[channel].samp=&snd->samples[0];
-	sndhw_unlock();
-	return channel;
+    /* Loading may allocate/read from storage. Do it on the game task before
+     * taking the audio mutex, while the old voice's sample remains pinned. */
+    data = W_LockLumpNum(lump);
+    if (!doom_pcm_parse_dmx(data, (size_t)length, &sample)) {
+        W_UnlockLumpNum(lump);
+        return -1;
+    }
+    sndhw_lock();
+    release_channel(channel);
+    sample_lumps[channel] = lump;
+    int started = doom_pcm_start(&mixer, channel, &sample, vol, sep, pitch);
+    if (!started) release_channel(channel);
+    sndhw_unlock();
+    return started ? channel : -1;
+}
+
+void I_UpdateSoundParams(int handle, int volume, int separation, int pitch)
+{
+    if (!sound_inited) return;
+    sndhw_lock();
+    doom_pcm_update(&mixer, handle, volume, separation, pitch);
+    sndhw_unlock();
+}
+
+void I_StopSound(int handle)
+{
+    if (!sound_inited || !valid_channel(handle)) return;
+    sndhw_lock();
+    release_channel(handle);
+    sndhw_unlock();
+}
+
+int I_SoundIsPlaying(int handle)
+{
+    int playing;
+    if (!sound_inited || !valid_channel(handle)) return 0;
+    sndhw_lock();
+    playing = doom_pcm_playing(&mixer, handle);
+    if (!playing) release_channel(handle);
+    sndhw_unlock();
+    return playing;
+}
+
+int I_AnySoundStillPlaying(void)
+{
+    int playing = 0;
+    for (int i = 0; i < DOOM_MIXER_VOICES; ++i)
+        playing |= I_SoundIsPlaying(i);
+    return playing;
+}
+
+void I_SetChannels(void)
+{
+    /* Match PrBoom's configurable channel limit, instead of silently accepting
+     * only four of the default eight voices. */
+    if (numChannels > DOOM_MIXER_VOICES) numChannels = DOOM_MIXER_VOICES;
+    for (int i = 0; i < DOOM_MIXER_VOICES; ++i) I_StopSound(i);
 }
 
 void I_ShutdownSound(void)
 {
     if (sound_inited) {
+        for (int i = 0; i < DOOM_MIXER_VOICES; ++i) I_StopSound(i);
 		lprintf(LO_INFO, "I_ShutdownSound: ");
 		lprintf(LO_INFO, "\n");
         sound_inited = false;
@@ -211,8 +225,11 @@ void I_ShutdownSound(void)
 //static SDL_AudioSpec audio;
 
 void I_InitSound(void) {
+    doom_pcm_init(&mixer, RATE);
+    for (int i = 0; i < DOOM_MIXER_VOICES; ++i) sample_lumps[i] = -1;
 	I_InitMusic();
 	sndhw_init(RATE, snd_cb);
+    sound_inited = true;
 
 	// Finished initialization.
     lprintf(LO_INFO,"I_InitSound: sound ready");
@@ -242,11 +259,11 @@ void I_PauseSong (int handle){
 //	printf("STUB: I_PauseSong %d\n", handle);
 }
 
-void I_ResumeSong () {
+void I_ResumeSong (void) {
 //	printf("STUB: I_ResumeSong %d\n", handle);
 }
 
-void I_StopSong(int handle) {
+void I_StopSong(void) {
 //	printf("STUB: I_StopSong %d\n", handle);
 }
 

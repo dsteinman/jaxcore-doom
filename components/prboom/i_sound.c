@@ -54,41 +54,6 @@
 #include "d_main.h"
 
 
-void I_UpdateSoundParams(int handle, int volume, int seperation, int pitch)
-{
-}
-
-
-void I_SetChannels(void)
-{
-}
-
-int I_GetSfxLumpNum(sfxinfo_t* sfx)
-{
-    return 1;
-}
-
-
-void I_StopSound (int handle)
-{
-}
-
-
-int I_SoundIsPlaying(int handle)
-{
-    return 0;
-}
-
-
-int I_AnySoundStillPlaying(void)
-{
-  return false;
-}
-
-
-
-
-
 void I_ShutdownMusic(void)
 {
 }

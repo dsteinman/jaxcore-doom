@@ -90,8 +90,8 @@ void I_UpdateMusic(void);
 void I_SetMusicVolume(int volume);
 
 // PAUSE game handling.
-void I_PauseSong();
-void I_ResumeSong();
+void I_PauseSong(int handle);
+void I_ResumeSong(void);
 
 // cournia - tries to load a music file
 int I_RegisterMusic( const char* filename, musicinfo_t *music );
@@ -103,7 +103,7 @@ int I_RegisterMusic( const char* filename, musicinfo_t *music );
 void I_PlaySong(uint8_t *data, int len, int looping);
 
 // Stops a song over 3 seconds.
-void I_StopSong();
+void I_StopSong(void);
 
 
 // Allegro card support jff 1/18/98

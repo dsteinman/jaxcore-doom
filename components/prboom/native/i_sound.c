@@ -128,11 +128,11 @@ void I_PauseSong (int handle)
 {
 }
 
-void I_ResumeSong (int handle)
+void I_ResumeSong (void)
 {
 }
 
-void I_StopSong(int handle)
+void I_StopSong(void)
 {
 }
 
@@ -144,5 +144,4 @@ int I_RegisterMusic( const char* filename, musicinfo_t *song )
 void I_SetMusicVolume(int volume)
 {
 }
-
 

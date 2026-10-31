@@ -1,3 +1,19 @@
+# Jaxcore Doom: ESP32-S31 port in progress
+
+This work starts from `pablosguajardo/doom-esp32` commit
+`3a18aeb863415acbb9d96f3a70443c475f693053`.
+
+The first changes add a tested filesystem WAD adapter, independent stereo
+effects mixing, sample-cache ownership fixes, and selectable mono/stereo I2S
+transport. **This is not yet a complete S31 firmware build.** The upstream S3
+configuration remains the default while the board layer and SDK migration are
+developed. No Jaxcore hardware has been fabricated or tested.
+
+See [the firmware port guide](docs/JAXCORE_PORT.md) for implemented behavior,
+desktop test commands, S31 object checks, and the remaining migration work.
+
+The original upstream instructions below describe the ESP32-S3 reference board.
+
 # 🎮 ESP32-S3 DOOM Project
 
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.2-blue)

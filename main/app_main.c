@@ -89,6 +89,8 @@ void app_main()
         printf("Bt is disabled.\n");
     }
 
+    /* Filesystem mode requires the board layer to mount storage before here. */
+#if !CONFIG_DOOM_WAD_FILESYSTEM
     /* Partition checks */
     const esp_partition_t *part;
 
@@ -99,6 +101,7 @@ void app_main()
     part = esp_partition_find_first(66, 7, NULL);
     if (part == 0)
         printf("Couldn't find prboom wad part!\n");
+#endif
 
     printf("app_main: before spi_lcd_init()\n");
     spi_lcd_init();

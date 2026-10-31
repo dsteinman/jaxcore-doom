@@ -96,7 +96,7 @@ void W_InitCache(void)
     I_Error ("W_Init: Couldn't allocate lumpcache");
 
 
-  for (int i=0; i<numlumps; i++)  cachelump[i].locks = -1;
+  /* calloc initializes reference counts to zero. */
 
 #ifdef TIMEDIAG
   atexit(W_ReportLocks);
@@ -110,96 +110,36 @@ void W_DoneCache(void)
     //ToDo... if we ever unload a wad
 }
 
-/*
-As far as I can see, the lump scheme is reference counted... W_CacheLumpNum loads up a lump, W_LockLumpNum increases the lock count,
-W_UnlockLumpNum decreases it and if it's -1 it can un-mmap the lump. NOTE: W_LockLumpNum is not used in the current code.
-*/
-
-
+/* The heap-backed cache follows PrBoom's paired Cache/Unlock contract.
+ * Every acquisition pins the lump, including concurrent users of one sound.
+ * All cache operations belong to the game task. */
 const void* W_CacheLumpNum(int lump)
 {
-#ifdef RANGECHECK
-  if ((unsigned)lump >= (unsigned)numlumps)
-    I_Error ("W_CacheLumpNum: %i >= numlumps",lump);
-#endif
-
-  /* Disable flash mmap usage to avoid MMU exhaustion when BLE is active.
-     Always copy lump into heap instead of mapping flash. */
-
-  size_t len = W_LumpLength(lump);
-
-  if (!cachelump[lump].cache) {
-    Z_Malloc(len, PU_CACHE, &cachelump[lump].cache);
-
-    /* Seek to lump position and read using I_Lseek */
-    I_Lseek(lumpinfo[lump].wadfile->handle,
-            lumpinfo[lump].position,
-            SEEK_SET);
-
-    I_Read(lumpinfo[lump].wadfile->handle,
-           cachelump[lump].cache,
-           len);
-  }
-
-  cachelump[lump].locks = -2; /* mark as heap-backed, not mmap */
-
-  return cachelump[lump].cache;
+    if ((unsigned)lump >= (unsigned)numlumps)
+        I_Error("W_CacheLumpNum: invalid lump %d", lump);
+    if (!cachelump[lump].cache) {
+        size_t len = W_LumpLength(lump);
+        Z_Malloc(len, PU_STATIC, &cachelump[lump].cache);
+        if (I_Lseek(lumpinfo[lump].wadfile->handle,
+                    lumpinfo[lump].position, SEEK_SET) < 0)
+            I_Error("W_CacheLumpNum: cannot seek to lump %d", lump);
+        I_Read(lumpinfo[lump].wadfile->handle, cachelump[lump].cache, len);
+    } else if (cachelump[lump].locks == 0) {
+        Z_ChangeTag(cachelump[lump].cache, PU_STATIC);
+    }
+    cachelump[lump].locks++;
+    return cachelump[lump].cache;
 }
 
-/*
- * W_LockLumpNum
- *
- * This copies the lump into a malloced memory region and returns its address
- * instead of returning a pointer into the memory mapped area
- *
- */
 const void* W_LockLumpNum(int lump)
 {
-  size_t len = W_LumpLength(lump);
-  const void *data = W_CacheLumpNum(lump);
-
-  if (!cachelump[lump].cache) {
-    // read the lump in
-    Z_Malloc(len, PU_CACHE, &cachelump[lump].cache);
-    memcpy(cachelump[lump].cache, data, len);
-  }
-
-  /* cph - if wasn't locked but now is, tell z_zone to hold it */
-  if (cachelump[lump].locks <= 0) {
-    Z_ChangeTag(cachelump[lump].cache,PU_STATIC);
-#ifdef TIMEDIAG
-    cachelump[lump].locktic = gametic;
-#endif
-    // reset lock counter
-    cachelump[lump].locks = 1;
-  } else {
-    // increment lock counter
-    cachelump[lump].locks += 1;
-  }
-
-#ifdef SIMPLECHECKS
-  if (!((cachelump[lump].locks+1) & 0xf))
-    lprintf(LO_DEBUG, "W_CacheLumpNum: High lock on %8s (%d)\n",
-      lumpinfo[lump].name, cachelump[lump].locks);
-#endif
-
-  return cachelump[lump].cache;
+    return W_CacheLumpNum(lump);
 }
 
-void W_UnlockLumpNum(int lump) {
-  if (cachelump[lump].locks == -1) {
-    /* mmap disabled: nothing to unmap */
-    return;
-  }
-#ifdef SIMPLECHECKS
-  if (cachelump[lump].locks == 0)
-    lprintf(LO_DEBUG, "W_UnlockLumpNum: Excess unlocks on %8s\n",
-      lumpinfo[lump].name);
-#endif
-  cachelump[lump].locks -= 1;
-  /* cph - Note: must only tell z_zone to make purgeable if currently locked,
-   * else it might already have been purged
-   */
-  if (cachelump[lump].locks == 0)
-    Z_ChangeTag(cachelump[lump].cache, PU_CACHE);
+void W_UnlockLumpNum(int lump)
+{
+    if ((unsigned)lump >= (unsigned)numlumps || cachelump[lump].locks <= 0)
+        I_Error("W_UnlockLumpNum: unbalanced release of lump %d", lump);
+    if (--cachelump[lump].locks == 0)
+        Z_ChangeTag(cachelump[lump].cache, PU_CACHE);
 }

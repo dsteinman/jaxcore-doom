@@ -75,6 +75,7 @@ SRCS
   "dbopl.c"
   "i_audio.c"
   "i_sound.c"
+  "pcm_mixer.c"
 
 INCLUDE_DIRS
   "." "include"
@@ -83,4 +84,3 @@ PRIV_REQUIRES
   prboom-wad-tables
   prboom-imfs
 )
-

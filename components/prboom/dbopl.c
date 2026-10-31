@@ -47,6 +47,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 //#include "dosbox.h"
 #include "dbopl.h"
 
@@ -571,7 +572,7 @@ static void Operator__WriteE0(Operator *self, const Chip* chip, Bit8u val ) {
   self->waveHandler = WaveHandlerTable[ waveForm ];
 #else
   self->waveBase = WaveTable + WaveBaseTable[ waveForm ];
-  self->waveStart = WaveStartTable[ waveForm ] << WAVE_SH;
+  self->waveStart = (Bit32u)WaveStartTable[ waveForm ] << WAVE_SH;
   self->waveMask = WaveMaskTable[ waveForm ];
 #endif
 }
@@ -707,11 +708,11 @@ static void Channel__SetChanData(Channel *self, const Chip* chip, Bit32u data ) 
   //Since a frequency update triggered this, always update frequency
         Operator__UpdateFrequency(Channel__Op( self, 0 ));
         Operator__UpdateFrequency(Channel__Op( self, 1 ));
-  if ( change & ( 0xff << SHIFT_KSLBASE ) ) {
+  if ( change & ( 0xffu << SHIFT_KSLBASE ) ) {
                 Operator__UpdateAttenuation(Channel__Op( self, 0 ));
                 Operator__UpdateAttenuation(Channel__Op( self, 1 ));
   }
-  if ( change & ( 0xff << SHIFT_KEYCODE ) ) {
+  if ( change & ( 0xffu << SHIFT_KEYCODE ) ) {
                 Operator__UpdateRates(Channel__Op( self, 0 ), chip);
                 Operator__UpdateRates(Channel__Op( self, 1 ), chip);
   }
@@ -1382,11 +1383,11 @@ void Chip__Setup(Chip *self, Bit32u rate ) {
       if ( diff < 0 ) {
         //Better than the last time
         Bit32s mul = ((original - diff) << 12) / original;
-        guessAdd = ((guessAdd * mul) >> 12);
+        guessAdd = (Bit32s)(((int64_t)guessAdd * mul) >> 12);
         guessAdd++;
       } else if ( diff > 0 ) {
         Bit32s mul = ((original - diff) << 12) / original;
-        guessAdd = (guessAdd * mul) >> 12;
+        guessAdd = (Bit32s)(((int64_t)guessAdd * mul) >> 12);
         guessAdd--;
       }
     }
@@ -1436,7 +1437,6 @@ void Chip__Setup(Chip *self, Bit32u rate ) {
 static int doneTables = FALSE;
 void DBOPL_InitTables( void ) {
   int i, oct;
-  Chip *chip = NULL;
 
   if ( doneTables )
     return;
@@ -1545,13 +1545,12 @@ void DBOPL_InitTables( void ) {
     //Add back the bits for highest ones
     if ( i >= 16 )
       index += 9;
-    blah = (Bitu) ( &(chip->chan[ index ]) );
+    blah = offsetof(Chip, chan) + index * sizeof(Channel);
     ChanOffsetTable[i] = (Bit16u) blah;
   }
   //Same for operators
   for ( i = 0; i < 64; i++ ) {
     Bitu chNum, opNum, blah;
-    Channel* chan = NULL;
     if ( i % 8 >= 6 || ( (i / 8) % 4 == 3 ) ) {
       OpOffsetTable[i] = 0;
       continue;
@@ -1561,7 +1560,7 @@ void DBOPL_InitTables( void ) {
     if ( chNum >= 12 )
       chNum += 16 - 12;
     opNum = ( i % 8 ) / 3;
-    blah = (Bitu) ( &(chan->op[opNum]) );
+    blah = offsetof(Channel, op) + opNum * sizeof(Operator);
     OpOffsetTable[i] = (Bit16u) (ChanOffsetTable[ chNum ] + blah);
   }
 #if 0
@@ -1592,5 +1591,3 @@ void DBOPL_InitTables( void ) {
   }
 #endif
 }
-
-

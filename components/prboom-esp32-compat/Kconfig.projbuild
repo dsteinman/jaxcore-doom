@@ -1,5 +1,26 @@
 menu "ESP32-Doom platform-specific configuration"
 
+config DOOM_WAD_FILESYSTEM
+	bool "Read WADs from a mounted filesystem"
+	default n
+	help
+		Use read-only POSIX/VFS file access instead of raw flash partitions.
+		The application must mount the filesystem before starting Doom.
+		This option does not initialize SDMMC or format storage.
+
+config DOOM_WAD_ROOT
+	string "Mounted WAD directory"
+	depends on DOOM_WAD_FILESYSTEM
+	default "/sdcard/doom"
+
+config DOOM_AUDIO_STEREO
+	bool "Transmit independent left/right PCM over I2S"
+	default n
+	help
+		The mixer always produces stereo. With this option disabled, transport
+		folds it to mono for the original MAX98357A setup. This does not
+		initialize the Jaxcore NAU8325 amplifier or assign S31 pins.
+
 choice DOOM_HARDWARE
 	prompt "Hardware to run on"
 	default HW_WROVERKIT_V2

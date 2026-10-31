@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 3.5)
 
+set(WAD_BACKEND_SOURCE "")
+if(CONFIG_DOOM_WAD_FILESYSTEM)
+  set(WAD_BACKEND_SOURCE "wad_file.c")
+endif()
+
 idf_component_register(
 SRCS
+  ${WAD_BACKEND_SOURCE}
   "gamepad.c"
   "i_main.c"
   "i_network.c"
