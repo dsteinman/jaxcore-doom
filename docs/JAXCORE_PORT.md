@@ -22,9 +22,10 @@ file access. The same source runs on a desktop filesystem or ESP-IDF VFS.
   bounded by the engine's existing signed `int` API (`INT_MAX` bytes).
 - `CONFIG_DOOM_WAD_FILESYSTEM` selects this backend. It is the S31 default;
   the old partition backend remains available for legacy configurations.
-- The application must mount storage before `doom_main`. This patch does not
-  mount, format, provision, or upload files to SD-NAND. Place both the chosen
-  IWAD and the required `prboom.wad` in the configured directory once that exists.
+- The startup path now mounts SD-NAND through `jaxcore-storage` before
+  `doom_main`. It never formats, provisions, or uploads files. The current
+  hard-coded engine startup expects `DOOM1.WAD` and `prboom.wad` under the
+  configured directory. Other IWAD selection remains follow-up work.
 
 WAD directory/lump structural validation is still inherited from upstream;
 the new bounds checks cover file size, read completion, and DMX sound payloads.
@@ -96,9 +97,9 @@ the original project-wide warning suppression is removed.
 S31 defaults use a 320x200 indexed framebuffer allocated explicitly in PSRAM,
 monotonic microsecond timing, and internal task stacks. Startup reports memory
 and checks PSRAM/heap state, then refuses to launch Doom if its required WADs
-are unavailable. The storage mount is still pending, so this is the expected
-startup path until the next milestone. Those startup paths are compile-checked,
-not verified on a device.
+are unavailable. Storage initialization and FAT mounting are implemented in
+`jaxcore-storage`; see [STORAGE.md](STORAGE.md). These startup paths are
+compile-checked, not verified on a device.
 
 ### OPL portability fixes
 
@@ -119,7 +120,7 @@ UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/host --output-on-failure
 ```
 
 Address and undefined-behavior sanitizers are enabled by default on GCC/Clang.
-Tests keep assertions enabled in all build configurations. The four suites cover:
+Tests keep assertions enabled in all build configurations. The five suites cover:
 
 1. DMX bounds, silence midpoint, stereo panning, live updates, volume, pitch,
    resampling, exact sample end, 32 simultaneous voices and clipping.
@@ -129,6 +130,9 @@ Tests keep assertions enabled in all build configurations. The four suites cover
    shared sound pins, replacement, invalid sounds and shutdown.
 4. The actual WAD cache with a simulated zone allocator, including shared
    ownership, final release, eviction and reload through the filesystem backend.
+5. The actual storage component against SDK fakes, covering configuration,
+   staged failures, ownership, no-filesystem handling, and cleanup/retry. This
+   tests control flow; the full build separately checks real SDK compatibility.
 
 An optional compilation check uses an already-installed official S31 Arduino
 SDK and RISC-V compiler:
@@ -151,8 +155,8 @@ S31 SDK, IDF `v6.1-803-g94639ab7251`, and Espressif RISC-V tools `2512`.
    firmware link. Keep this build passing as peripheral support is added.
 2. Extend the startup diagnostics into a board component. Keep unresolved pins
    explicitly unassigned; do not inherit S3 button/display pins into S31 defaults.
-3. Mount SD-NAND over SDMMC, with an explicit provisioning/upload path and
-   recoverable errors. Keep storage formatting a separate deliberate operation.
+3. SDMMC/FAT mounting is implemented. Add explicit WAD provisioning/upload and
+   verify mounting/reads on hardware. Keep formatting a separate deliberate step.
 4. Separate the indexed renderer/scaler from the ST7789 transport; validate
    landscape/aspect ratio with desktop image fixtures before hardware tests.
 5. Implement NAU8325 I2C initialization, MCLK/sample-format configuration and

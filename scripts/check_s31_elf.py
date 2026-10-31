@@ -31,12 +31,20 @@ def main():
     output = subprocess.check_output([nm_match[1], "--defined-only", str(elf)],
                                       text=True)
     symbols = {line.split()[-1] for line in output.splitlines() if line.split()}
+    config = (build / "sdkconfig").read_text()
+    storage_enabled = "CONFIG_JAXCORE_STORAGE_SDMMC=y" in config
     required = {"doom_main", "D_DoomMain", "P_Ticker", "R_RenderPlayerView",
                 "doom_pcm_render", "I_Open", "I_StartSound", "W_CacheLumpNum",
                 "sndhw_init", "spi_lcd_send", "gamepadPoll"}
+    if storage_enabled:
+        required |= {"jaxcore_storage_mount", "sdmmc_card_init", "sdmmc_host_init_slot",
+                     "f_mount", "esp_vfs_fat_register", "ff_diskio_register_sdmmc"}
+        format_symbols = {"f_mkfs", "f_fdisk", "esp_vfs_fat_sdcard_format",
+                          "esp_vfs_fat_sdcard_format_cfg"}
+        require(not (format_symbols & symbols), "Unexpected formatting code linked: " +
+                ", ".join(sorted(format_symbols & symbols)))
     require(required <= symbols, "Engine symbols missing: " +
             ", ".join(sorted(required - symbols)))
-    config = (build / "sdkconfig").read_text()
     require('CONFIG_IDF_TARGET="esp32s31"' in config, "Wrong SDK target")
     require("CONFIG_DOOM_WAD_FILESYSTEM=y" in config, "WAD filesystem disabled")
     for option in ("DOOM_DISPLAY_SPI", "DOOM_AUDIO_I2S", "DOOM_LEGACY_INPUT"):
@@ -52,6 +60,8 @@ def main():
         "application_bytes": len(image_bytes),
         "application_sha256": hashlib.sha256(image_bytes).hexdigest(),
         "hardware_run": False,
+        "sdmmc_storage_enabled": storage_enabled,
+        "storage_automatic_formatting": False,
         "profile": "headless/software-audio/no-input/filesystem-preflight",
     }
     (build / "verification.json").write_text(json.dumps(report, indent=2) + "\n")

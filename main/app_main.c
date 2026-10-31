@@ -15,6 +15,7 @@
 #include "gamepad.h"
 #include "spi_lcd.h"
 #include "wad_file.h"
+#include "jaxcore_storage.h"
 #if CONFIG_DOOM_LEGACY_INPUT && CONFIG_HW_JOYSTICK_OPTION == 2
 #include "bt_manager.h"
 #include "nvs_flash.h"
@@ -60,14 +61,26 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     bt_init();
 #endif
-    /* Storage mounting is a following milestone. No formatting is attempted.
-     * The preflight keeps a board without WADs out of the engine error path. */
+#if CONFIG_JAXCORE_STORAGE_SDMMC
+    esp_err_t storage_err = jaxcore_storage_mount();
+    if (storage_err != ESP_OK) {
+        jaxcore_storage_status storage = jaxcore_storage_get_status();
+        ESP_LOGE(TAG, "Storage stopped at %s: %s (FatFS=%d); engine not started",
+                 jaxcore_storage_stage_name(storage.stage),
+                 esp_err_to_name(storage_err), storage.fat_result);
+        return;
+    }
+#endif
+    /* No files or directories are created during startup. */
     const char *required[] = { "DOOM1.WAD", "prboom.wad" };
     for (unsigned i = 0; i < sizeof(required) / sizeof(required[0]); ++i) {
         int fd = I_Open(required[i], O_RDONLY);
         if (fd < 0) {
             ESP_LOGW(TAG, "WAD unavailable: %s; engine not started", required[i]);
-            ESP_LOGW(TAG, "Filesystem mount/upload support is still pending");
+#if CONFIG_DOOM_WAD_FILESYSTEM
+            ESP_LOGW(TAG, "Place the required WADs under %s; upload support is pending",
+                     CONFIG_DOOM_WAD_ROOT);
+#endif
             return;
         }
         I_Close(fd);

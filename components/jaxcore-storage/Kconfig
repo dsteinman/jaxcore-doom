@@ -1,0 +1,21 @@
+menu "Jaxcore fixed SD-NAND storage"
+
+config JAXCORE_STORAGE_SDMMC
+    bool "Mount onboard SD-NAND over SDMMC"
+    depends on IDF_TARGET_ESP32S31 && DOOM_WAD_FILESYSTEM
+    default y
+    help
+        Use SDMMC Slot 0, 4-bit, 3.3 V on GPIO20-25 from the hardware
+        handoff. Requires the board's external CMD/DAT pull-ups. No card
+        detect, UHS, internal SD power control, or automatic formatting.
+
+config JAXCORE_STORAGE_MAX_FREQ_KHZ
+    int "Maximum SDMMC bus frequency (kHz)"
+    depends on JAXCORE_STORAGE_SDMMC
+    range 400 20000
+    default 10000
+    help
+        Start at a conservative 10 MHz ceiling; protocol probing starts
+        at 400 kHz. Raise only after validation on the fabricated board.
+
+endmenu

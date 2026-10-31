@@ -44,3 +44,8 @@ target_include_directories(test_cache PRIVATE "${ENGINE}/include")
 target_compile_definitions(test_cache PRIVATE HAVE_CONFIG_H)
 target_link_libraries(test_cache PRIVATE wad_file)
 add_test(NAME wad_cache_pins COMMAND test_cache)
+
+set(STORAGE "${CMAKE_CURRENT_LIST_DIR}/../../components/jaxcore-storage")
+add_executable(test_storage_sdmmc test_storage_sdmmc.c "${STORAGE}/storage_sdmmc.c")
+target_include_directories(test_storage_sdmmc PRIVATE storage_fakes "${STORAGE}/include")
+add_test(NAME storage_sdmmc_lifecycle COMMAND test_storage_sdmmc)

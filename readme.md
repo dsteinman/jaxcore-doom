@@ -5,12 +5,15 @@ This work starts from `pablosguajardo/doom-esp32` commit
 
 The S31 profile now **builds and links a complete RISC-V firmware image** using
 a pinned ESP-IDF revision. It contains the Doom engine, filesystem WAD adapter,
-stereo effects mixer and memory/startup diagnostics. Display and inputs are
-disabled; audio uses a paced software sink. Storage mounting, ST7789 output and
-NAU8325 setup remain pending. No Jaxcore hardware has been fabricated or tested.
+SDMMC/FAT mounting for fixed SD-NAND, stereo effects mixer and startup diagnostics.
+Display and inputs are disabled; audio uses a paced software sink. WAD uploading,
+ST7789 output and NAU8325 setup remain pending. No Jaxcore hardware has been
+fabricated or tested.
 
 Start with [the S31 build instructions](docs/S31_BUILD.md). The planned display
 is **284x240 landscape RGB565**, separate from the **320x200 indexed renderer**.
+See [storage bring-up](docs/STORAGE.md) for pin mapping, failure diagnostics and
+the filesystem expected on SD-NAND. Startup never formats storage.
 
 See [the firmware port guide](docs/JAXCORE_PORT.md) for implemented behavior,
 desktop test commands, and the remaining peripheral work.

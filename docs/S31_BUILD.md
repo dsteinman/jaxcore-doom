@@ -16,12 +16,15 @@ The current S31 profile deliberately selects:
 | Planned presentation | 284x213 aspect-corrected image with 27 letterbox rows |
 | Audio | Existing 22050 Hz stereo callback into a tick-paced software sink |
 | Controls | No input backend; upstream S3 mapping is excluded |
-| WAD storage | Read-only VFS adapter rooted at `/sdcard/doom`; mounting pending |
-| Startup | Chip/flash/PSRAM/heap diagnostics and required-file preflight |
+| WAD storage | SDMMC/FAT mount at `/sdcard`; read-only WAD access under `/sdcard/doom` |
+| Startup | Memory diagnostics, staged storage initialization, required-file preflight |
 
-Startup does not enter Doom unless both `DOOM1.WAD` and `prboom.wad` can be opened.
-Since this change does not mount storage, the expected initial behavior is to
-report the unavailable WAD and return. This boot behavior is not device-tested.
+Startup requests SDMMC Slot 0 at 3.3 V, four data lines and a 10 MHz ceiling,
+then mounts an existing FAT volume. It does not enter Doom unless the mount
+succeeds and both `DOOM1.WAD` and `prboom.wad` can be opened. Missing/unformatted
+media and absent WAD files produce diagnostics and stop engine startup.
+No formatting or file creation is performed. These paths are not device-tested.
+See [STORAGE.md](STORAGE.md) for storage configuration and diagnostics.
 The full engine remains linked and is checked by `scripts/check_s31_elf.py`.
 
 ## Pinned environment
@@ -90,11 +93,13 @@ The first successful complete build produced:
 | Static DIRAM remaining in linker layout | 303,630 |
 | Factory application partition | 15,728,640 |
 
-These are linker/build measurements. Remaining runtime heap is smaller after
+These measurements precede the SDMMC/FAT component; current image size and hash
+are recorded in `build/s31/verification.json`. They are linker/build measurements.
+Remaining runtime heap is smaller after
 stacks and dynamic allocations. PSRAM capacity is detected at boot; none of
 these figures establishes runtime memory headroom, throughput or frame rate.
 
-The four desktop suites pass with address/undefined-behavior sanitizers:
+The five desktop suites pass with address/undefined-behavior sanitizers:
 
 ```sh
 cmake -S tests/host -B build/host -DCMAKE_BUILD_TYPE=Debug
@@ -110,8 +115,9 @@ local macOS validation.
 
 ## What remains
 
-Next implement SDMMC mounting and a WAD provisioning/upload path, followed by
-the board configuration, ST7789 scaling/transport, NAU8325 clocks/registers,
+SDMMC/FAT mounting is implemented and compile-checked. Next implement a WAD
+provisioning/upload path, followed by the board configuration, ST7789
+scaling/transport, NAU8325 clocks/registers,
 and logical controls. Keep unassigned pins and physical output disabled until
 each driver has a deliberate configuration. Validate memory, timing, audio and
 display behavior on the fabricated modules before calling this a playable port.
