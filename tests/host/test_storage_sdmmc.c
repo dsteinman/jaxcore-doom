@@ -11,6 +11,8 @@ static bool host_owned, slot_owned, card_owned, disk_owned, vfs_owned, fat_ready
 static bool fail_fat_unmount, fail_vfs_unmount, fail_host_unmount;
 static int host_calls, probe_calls, card_deinit_calls, host_deinit_calls;
 static int vfs_unregister_calls;
+static BYTE allocated_drive = 3;
+static char expected_drive_path[3] = "3:";
 static FATFS fs, someone_elses_fs;
 
 const char *esp_err_to_name(esp_err_t error) { (void)error; return "injected error"; }
@@ -71,25 +73,25 @@ esp_err_t ff_diskio_get_drive(BYTE *drive)
 {
     assert(card_owned);
     if (fail_at == DRIVE) return ESP_ERR_NOT_FOUND;
-    *drive = 3; /* ensure the implementation does not assume drive zero */
+    *drive = allocated_drive; /* ensure the implementation does not assume drive zero */
     return ESP_OK;
 }
 void ff_diskio_register_sdmmc(BYTE drive, sdmmc_card_t *card)
 {
     (void)card;
-    assert(card_owned && !disk_owned && drive == 3);
+    assert(card_owned && !disk_owned && drive == allocated_drive);
     disk_owned = true;
 }
 void ff_diskio_register(BYTE drive, const void *implementation)
 {
-    assert(drive == 3 && disk_owned && !vfs_owned && !implementation);
+    assert(drive == allocated_drive && disk_owned && !vfs_owned && !implementation);
     disk_owned = false;
 }
 esp_err_t esp_vfs_fat_register(const esp_vfs_fat_conf_t *config, FATFS **out)
 {
     assert(disk_owned && !vfs_owned);
     assert(!strcmp(config->base_path, "/sdcard"));
-    assert(!strcmp(config->fat_drive, "3:") && config->max_files == 16);
+    assert(!strcmp(config->fat_drive, expected_drive_path) && config->max_files == 16);
     if (fail_at == VFS) {
         *out = &someone_elses_fs;
         return ESP_ERR_INVALID_STATE;
@@ -108,7 +110,7 @@ esp_err_t esp_vfs_fat_unregister_path(const char *path)
 }
 FRESULT f_mount(FATFS *filesystem, const char *path, BYTE immediate)
 {
-    assert(disk_owned && vfs_owned && !strcmp(path, "3:"));
+    assert(disk_owned && vfs_owned && !strcmp(path, expected_drive_path));
     if (!filesystem) {
         assert(immediate == 0);
         if (fail_fat_unmount) return FR_DISK_ERR;
@@ -128,6 +130,8 @@ static void reset(void)
     assert(jaxcore_storage_unmount() == ESP_OK);
     assert(!host_owned && !slot_owned && !card_owned && !disk_owned && !vfs_owned);
     fail_at = NONE;
+    allocated_drive = 3;
+    expected_drive_path[0] = '3';
     host_calls = probe_calls = card_deinit_calls = host_deinit_calls = 0;
     vfs_unregister_calls = 0;
 }
@@ -194,8 +198,29 @@ static void test_cleanup_retry(void)
     assert(jaxcore_storage_unmount() == ESP_OK && !host_owned);
 }
 
+static void test_drive_limits(void)
+{
+    const BYTE valid[] = { 0, 9 };
+    for (unsigned i = 0; i < sizeof(valid) / sizeof(valid[0]); ++i) {
+        reset();
+        allocated_drive = valid[i];
+        expected_drive_path[0] = (char)('0' + allocated_drive);
+        assert(jaxcore_storage_mount() == ESP_OK);
+        assert(jaxcore_storage_unmount() == ESP_OK);
+    }
+    const BYTE invalid[] = { 10, 255 };
+    for (unsigned i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        reset();
+        allocated_drive = invalid[i];
+        assert(jaxcore_storage_mount() == ESP_ERR_INVALID_STATE);
+        jaxcore_storage_status s = jaxcore_storage_get_status();
+        assert(s.stage == JAXCORE_STORAGE_DRIVE && s.cleanup_error == ESP_OK);
+        assert(!host_owned && !card_owned && !disk_owned && !vfs_owned);
+    }
+}
+
 int main(void)
 {
-    test_success(); test_failures(); test_cleanup_retry(); reset();
+    test_success(); test_failures(); test_cleanup_retry(); test_drive_limits(); reset();
     puts("Storage: pin configuration, staged failures, ownership and retry passed");
 }

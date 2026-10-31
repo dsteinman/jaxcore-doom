@@ -107,11 +107,12 @@ cmake --build build/host
 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/host --output-on-failure
 ```
 
-A manual GitHub Actions workflow, **S31 firmware build (manual)**, runs the
-same pinned setup, complete build and ELF checks on Linux and uploads build
-artifacts. Dispatch becomes available after the workflow is on the fork's default
-branch. It is not automatically scheduled and was not run as part of the initial
-local macOS validation.
+The **S31 firmware build** GitHub Actions workflow runs the same pinned setup,
+complete build and ELF checks on Ubuntu 24.04 for pushes and pull requests,
+and uploads build artifacts. Manual dispatch is also available after the workflow
+is on the fork's default branch. The **Portable firmware tests** workflow runs
+all five host suites with both GCC and Clang, with address and undefined behavior
+sanitizers enabled.
 
 ## What remains
 

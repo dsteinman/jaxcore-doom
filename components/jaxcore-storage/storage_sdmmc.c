@@ -6,7 +6,7 @@ static const char *TAG = "sd-nand";
 static sdmmc_card_t card;
 static FATFS *filesystem;
 static BYTE drive_number = FF_DRV_NOT_USED;
-static char drive_path[4];
+static char drive_path[3];
 static bool host_live, card_live, disk_live, vfs_live;
 static jaxcore_storage_status status = { .fat_result = -1 };
 
@@ -118,7 +118,10 @@ esp_err_t jaxcore_storage_mount(void)
     err = ff_diskio_get_drive(&drive_number);
     if (err != ESP_OK) goto fail;
     if (drive_number > 9) { err = ESP_ERR_INVALID_STATE; goto fail; }
-    snprintf(drive_path, sizeof(drive_path), "%u:", (unsigned)drive_number);
+    /* FatFs accepts a single-digit volume number; the range is checked above. */
+    drive_path[0] = (char)('0' + drive_number);
+    drive_path[1] = ':';
+    drive_path[2] = '\0';
     ff_diskio_register_sdmmc(drive_number, &card);
     disk_live = true;
 

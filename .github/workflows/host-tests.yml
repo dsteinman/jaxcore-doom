@@ -6,8 +6,13 @@ permissions:
   contents: read
 jobs:
   host-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
     env:
+      CC: ${{ matrix.compiler }}
       UBSAN_OPTIONS: halt_on_error=1
     steps:
       - uses: actions/checkout@v4
